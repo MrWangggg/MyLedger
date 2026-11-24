@@ -1,0 +1,267 @@
+<template>
+	<scroll-view class="page" scroll-y>
+		<!-- 贷款方式切换 -->
+		<view class="seg-box">
+			<text class="seg-item" :class="mode == 0 ? 'seg-active' : ''" @click="switchMode(0)">等额本息</text>
+			<text class="seg-item" :class="mode == 1 ? 'seg-active' : ''" @click="switchMode(1)">等额本金</text>
+		</view>
+
+		<!-- 输入区 -->
+		<view class="card">
+			<view class="input-row">
+				<text class="input-label">贷款总额（万元）</text>
+				<input class="input-box" type="digit" :value="totalWan" @input="onTotalInput" placeholder="如：100" />
+			</view>
+			<view class="input-row">
+				<text class="input-label">贷款年限（年）</text>
+				<input class="input-box" type="number" :value="years" @input="onYearsInput" placeholder="如：30" />
+			</view>
+			<view class="input-row">
+				<text class="input-label">年利率（%）</text>
+				<input class="input-box" type="digit" :value="rate" @input="onRateInput" placeholder="如：3.6" />
+			</view>
+			<view class="rate-quick">
+				<text class="rate-tag" v-for="(r, i) in quickRates" :key="r" @click="pickRate(r)">{{ r }}%</text>
+			</view>
+		</view>
+
+		<!-- 计算按钮 -->
+		<view class="calc-btn" @click="calc">
+			<text class="calc-btn-text">开始计算</text>
+		</view>
+
+		<!-- 结果区 -->
+		<template v-if="hasResult">
+			<view class="card result-card">
+				<text class="card-title">{{ mode == 0 ? '等额本息' : '等额本金' }}结果</text>
+				<view class="result-hero">
+					<text class="result-label">{{ mode == 0 ? '每月月供' : '首月月供' }}</text>
+					<text class="result-value">¥{{ fmtMoney(firstPay) }}</text>
+					<text class="result-sub" v-if="mode == 1">每月递减 ¥{{ fmtMoney(diff) }}</text>
+				</view>
+				<view class="result-grid">
+					<view class="result-cell">
+						<text class="result-num">¥{{ fmtMoney(totalInterest) }}</text>
+						<text class="result-label2">支付利息总额</text>
+					</view>
+					<view class="result-cell">
+						<text class="result-num">¥{{ fmtMoney(totalPay) }}</text>
+						<text class="result-label2">还款总额</text>
+					</view>
+				</view>
+				<text class="result-note" v-if="mode == 1">末月月供约 ¥{{ fmtMoney(lastPay) }}</text>
+			</view>
+		</template>
+		<view class="bottom-space"></view>
+	</scroll-view>
+</template>
+
+<script>
+	import { fmtMoney } from '@/utils/date.uts'
+
+	export default {
+		data() {
+			return {
+				mode: 0, // 0=等额本息 1=等额本金
+				totalWan: '100',
+				years: '30',
+				rate: '3.6',
+				quickRates: ['3.1', '3.6', '4.2', '5.8'],
+				hasResult: false,
+				firstPay: 0,
+				lastPay: 0,
+				diff: 0,
+				totalInterest: 0,
+				totalPay: 0
+			}
+		},
+		methods: {
+			switchMode(m: number) {
+				this.mode = m
+				if (this.hasResult) this.calc()
+			},
+			onTotalInput(e: InputEvent) {
+				this.totalWan = e.detail.value
+			},
+			onYearsInput(e: InputEvent) {
+				this.years = e.detail.value
+			},
+			onRateInput(e: InputEvent) {
+				this.rate = e.detail.value
+			},
+			pickRate(r: string) {
+				this.rate = r
+			},
+			calc() {
+				const total = parseFloat(this.totalWan) * 10000
+				const months = parseInt(this.years) * 12
+				const yearRate = parseFloat(this.rate) / 100
+				const monthRate = yearRate / 12
+				if (isNaN(total) || total <= 0 || isNaN(months) || months <= 0 || isNaN(monthRate) || monthRate <= 0) {
+					uni.showToast({ title: '请输入完整的贷款信息', icon: 'none' })
+					return
+				}
+				if (this.mode == 0) {
+					// 等额本息：M = P * r * (1+r)^n / ((1+r)^n - 1)
+					const p = Math.pow(1 + monthRate, months)
+					const m = total * monthRate * p / (p - 1)
+					this.firstPay = m
+					this.totalPay = m * months
+					this.totalInterest = this.totalPay - total
+				} else {
+					// 等额本金：每月本金固定 = P/n，利息 = 剩余本金 * 月利率
+					const principal = total / months
+					this.firstPay = principal + total * monthRate
+					this.lastPay = principal + principal * monthRate
+					this.diff = principal * monthRate
+					this.totalInterest = (months + 1) * total * monthRate / 2
+					this.totalPay = total + this.totalInterest
+				}
+				this.hasResult = true
+			},
+			fmtMoney(n: number): string {
+				return fmtMoney(n)
+			}
+		}
+	}
+</script>
+
+<style>
+	.page {
+		flex: 1;
+		background-color: #F7F8FC;
+	}
+
+	.seg-box {
+		flex-direction: row;
+		align-self: center;
+		margin-top: 24rpx;
+		background-color: #ECEFF5;
+		border-radius: 34rpx;
+		padding: 6rpx;
+	}
+	.seg-item {
+		width: 200rpx;
+		height: 60rpx;
+		line-height: 60rpx;
+		text-align: center;
+		font-size: 28rpx;
+		color: #6B7280;
+		border-radius: 30rpx;
+	}
+	.seg-active {
+		background-color: #FFFFFF;
+		color: #2F6BFF;
+		font-weight: bold;
+	}
+
+	.card {
+		margin: 24rpx;
+		background-color: #FFFFFF;
+		border-radius: 20rpx;
+		padding: 30rpx;
+	}
+	.card-title {
+		font-size: 30rpx;
+		font-weight: bold;
+		color: #1F2937;
+	}
+
+	.input-row {
+		flex-direction: row;
+		justify-content: space-between;
+		align-items: center;
+		margin-top: 24rpx;
+	}
+	.input-label {
+		font-size: 28rpx;
+		color: #374151;
+	}
+	.input-box {
+		width: 320rpx;
+		height: 72rpx;
+		background-color: #F5F7FA;
+		border-radius: 14rpx;
+		padding: 0 20rpx;
+		font-size: 30rpx;
+		text-align: right;
+	}
+
+	.rate-quick {
+		flex-direction: row;
+		margin-top: 24rpx;
+	}
+	.rate-tag {
+		margin-right: 16rpx;
+		padding: 8rpx 24rpx;
+		background-color: #EEF4FF;
+		color: #2F6BFF;
+		font-size: 24rpx;
+		border-radius: 24rpx;
+	}
+
+	.calc-btn {
+		margin: 8rpx 24rpx;
+		height: 92rpx;
+		background-color: #2F6BFF;
+		border-radius: 46rpx;
+		justify-content: center;
+		align-items: center;
+	}
+	.calc-btn-text {
+		font-size: 32rpx;
+		font-weight: bold;
+		color: #FFFFFF;
+	}
+
+	.result-card {
+		background-color: #F0F6FF;
+	}
+	.result-hero {
+		align-items: center;
+		margin-top: 26rpx;
+	}
+	.result-label {
+		font-size: 24rpx;
+		color: #6B7280;
+	}
+	.result-value {
+		margin-top: 10rpx;
+		font-size: 60rpx;
+		font-weight: bold;
+		color: #2F6BFF;
+	}
+	.result-sub {
+		margin-top: 8rpx;
+		font-size: 22rpx;
+		color: #F59E0B;
+	}
+	.result-grid {
+		flex-direction: row;
+		margin-top: 30rpx;
+	}
+	.result-cell {
+		flex: 1;
+		align-items: center;
+	}
+	.result-num {
+		font-size: 30rpx;
+		font-weight: bold;
+		color: #1F2937;
+	}
+	.result-label2 {
+		margin-top: 8rpx;
+		font-size: 22rpx;
+		color: #9CA3AF;
+	}
+	.result-note {
+		margin-top: 20rpx;
+		font-size: 22rpx;
+		color: #9CA3AF;
+		text-align: center;
+	}
+
+	.bottom-space {
+		height: 40rpx;
+	}
+</style>

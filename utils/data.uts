@@ -1,0 +1,303 @@
+/**
+ * 数据层：轻记账（全部本地存储，不依赖后台）
+ * key 约定：
+ *   ll_bills    账单数组 JSON
+ *   ll_budgets  预算对象 JSON { "2026-11": 3000, ... }
+ *   ll_assets   资产账户数组 JSON
+ *   ll_invoice  发票抬头数组 JSON
+ */
+
+// ---------------- 数据模型 ----------------
+
+export type Bill = {
+	id: string
+	type: number // 0=支出 1=收入
+	catId: string
+	amount: number
+	date: string // YYYY-MM-DD
+	note: string
+}
+
+export type Asset = {
+	id: string
+	name: string
+	amount: number
+	icon: string
+}
+
+export type Invoice = {
+	id: string
+	title: string
+	taxId: string
+	createdAt: string
+}
+
+export type MonthStat = {
+	income: number
+	expense: number
+	balance: number
+}
+
+export type DayGroup = {
+	date: string
+	label: string
+	income: number
+	expense: number
+	items: Array<Bill>
+}
+
+export type CatRankItem = {
+	catId: string
+	name: string
+	icon: string
+	color: string
+	amount: number
+	percent: number
+}
+
+// ---------------- 存储基础 ----------------
+
+function getString(key: string): string {
+	const v = uni.getStorageSync(key)
+	if (v == null) return ''
+	return v as string
+}
+
+function setString(key: string, val: string) {
+	uni.setStorageSync(key, val)
+}
+
+let idSeq = 0
+
+export function genId(): string {
+	idSeq++
+	return `${Date.now()}-${idSeq}-${Math.floor(Math.random() * 900 + 100)}`
+}
+
+// ---------------- 账单 CRUD ----------------
+
+export function loadBills(): Array<Bill> {
+	const s = getString('ll_bills')
+	if (s.length == 0) return []
+	const list = JSON.parseArray<Bill>(s)
+	if (list == null) return []
+	return list
+}
+
+export function saveBills(list: Array<Bill>) {
+	setString('ll_bills', JSON.stringify(list))
+}
+
+export function addBill(bill: Bill) {
+	const list = loadBills()
+	list.push(bill)
+	saveBills(list)
+}
+
+export function updateBill(bill: Bill) {
+	const list = loadBills()
+	for (let i = 0; i < list.length; i++) {
+		if (list[i].id == bill.id) {
+			list.splice(i, 1, bill)
+			break
+		}
+	}
+	saveBills(list)
+}
+
+export function removeBill(id: string) {
+	const list = loadBills()
+	for (let i = 0; i < list.length; i++) {
+		if (list[i].id == id) {
+			list.splice(i, 1)
+			break
+		}
+	}
+	saveBills(list)
+}
+
+// ---------------- 统计 ----------------
+
+// 某月账单
+export function monthBills(bills: Array<Bill>, month: string): Array<Bill> {
+	const out: Array<Bill> = []
+	for (let i = 0; i < bills.length; i++) {
+		if (bills[i].date.substring(0, 7) == month) out.push(bills[i])
+	}
+	return out
+}
+
+// 账单合计
+export function sumOf(bills: Array<Bill>): number {
+	let s = 0
+	for (let i = 0; i < bills.length; i++) s += bills[i].amount
+	return s
+}
+
+// 月度收支统计
+export function monthStat(bills: Array<Bill>, month: string): MonthStat {
+	const mb = monthBills(bills, month)
+	let income = 0
+	let expense = 0
+	for (let i = 0; i < mb.length; i++) {
+		if (mb[i].type == 1) income += mb[i].amount
+		else expense += mb[i].amount
+	}
+	return { income: income, expense: expense, balance: income - expense } as MonthStat
+}
+
+// 按日分组（月内，倒序）
+export function groupByDay(bills: Array<Bill>, month: string): Array<DayGroup> {
+	const mb = monthBills(bills, month)
+	const dates: Array<string> = []
+	const groups: Array<Array<Bill>> = []
+	for (let i = 0; i < mb.length; i++) {
+		const d = mb[i].date
+		let idx = dates.indexOf(d)
+		if (idx < 0) {
+			idx = dates.length
+			dates.push(d)
+			groups.push([] as Array<Bill>)
+		}
+		groups[idx].push(mb[i])
+	}
+	// 日期倒序（冒泡，日期数量少，无性能问题）
+	for (let i = 0; i < dates.length - 1; i++) {
+		for (let j = 0; j < dates.length - 1 - i; j++) {
+			if (dates[j].localeCompare(dates[j + 1]) < 0) {
+				const td = dates[j]
+				dates[j] = dates[j + 1]
+				dates[j + 1] = td
+				const tg = groups[j]
+				groups[j] = groups[j + 1]
+				groups[j + 1] = tg
+			}
+		}
+	}
+
+	const out: Array<DayGroup> = []
+	for (let i = 0; i < dates.length; i++) {
+		const items = groups[i]
+		let income = 0
+		let expense = 0
+		for (let j = 0; j < items.length; j++) {
+			if (items[j].type == 1) income += items[j].amount
+			else expense += items[j].amount
+		}
+		out.push({
+			date: dates[i],
+			label: dates[i],
+			income: income,
+			expense: expense,
+			items: items
+		} as DayGroup)
+	}
+	return out
+}
+
+// 分类排行（某月，按金额倒序）
+export function catRank(bills: Array<Bill>, month: string, type: number): Array<CatRankItem> {
+	const mb = monthBills(bills, month)
+	const ids: Array<string> = []
+	const amounts: Array<number> = []
+	let total = 0
+	for (let i = 0; i < mb.length; i++) {
+		const b = mb[i]
+		if (b.type != type) continue
+		let idx = ids.indexOf(b.catId)
+		if (idx < 0) {
+			idx = ids.length
+			ids.push(b.catId)
+			amounts.push(0)
+		}
+		amounts[idx] += b.amount
+		total += b.amount
+	}
+	const out: Array<CatRankItem> = []
+	for (let i = 0; i < ids.length; i++) {
+		let percent = 0
+		if (total > 0) percent = Math.round(amounts[i] / total * 100)
+		out.push({
+			catId: ids[i],
+			name: ids[i],
+			icon: ids[i],
+			color: ids[i],
+			amount: amounts[i],
+			percent: percent
+		} as CatRankItem)
+	}
+	out.sort((a: CatRankItem, b: CatRankItem): number => b.amount - a.amount)
+	// 补充分类展示信息（避免循环依赖，由页面调用 fillRankInfo）
+	return out
+}
+
+// 每日支出序列（用于图表趋势，1 号到月末）
+export function dailySeries(bills: Array<Bill>, month: string, days: number): Array<number> {
+	const mb = monthBills(bills, month)
+	const out: Array<number> = []
+	for (let i = 0; i < days; i++) out.push(0)
+	for (let i = 0; i < mb.length; i++) {
+		const b = mb[i]
+		if (b.type != 0) continue
+		const day = parseInt(b.date.substring(8, 10))
+		if (day >= 1 && day <= days) out[day - 1] += b.amount
+	}
+	return out
+}
+
+// ---------------- 预算 ----------------
+
+export function getBudget(month: string): number {
+	const s = getString('ll_budgets')
+	if (s.length == 0) return 0
+	const obj = JSON.parseObject(s)
+	if (obj == null) return 0
+	const v = obj[month]
+	if (v == null) return 0
+	return Number(v)
+}
+
+export function setBudget(month: string, amount: number) {
+	let s = getString('ll_budgets')
+	let obj = new UTSJSONObject()
+	if (s.length > 0) {
+		const parsed = JSON.parseObject(s)
+		if (parsed != null) obj = parsed
+	}
+	obj[month] = amount
+	setString('ll_budgets', JSON.stringify(obj))
+}
+
+// ---------------- 资产 ----------------
+
+export function loadAssets(): Array<Asset> {
+	const s = getString('ll_assets')
+	if (s.length == 0) return []
+	const list = JSON.parseArray<Asset>(s)
+	if (list == null) return []
+	return list
+}
+
+export function saveAssets(list: Array<Asset>) {
+	setString('ll_assets', JSON.stringify(list))
+}
+
+export function assetTotal(list: Array<Asset>): number {
+	let s = 0
+	for (let i = 0; i < list.length; i++) s += list[i].amount
+	return s
+}
+
+// ---------------- 发票抬头 ----------------
+
+export function loadInvoices(): Array<Invoice> {
+	const s = getString('ll_invoice')
+	if (s.length == 0) return []
+	const list = JSON.parseArray<Invoice>(s)
+	if (list == null) return []
+	return list
+}
+
+export function saveInvoices(list: Array<Invoice>) {
+	setString('ll_invoice', JSON.stringify(list))
+}

@@ -1,0 +1,129 @@
+/**
+ * 日期工具：轻记账（纯标准实现，不依赖平台 Date 多参构造）
+ */
+
+// 数字补零：7 -> "07"
+export function pad2(n: number): string {
+	return n < 10 ? `0${n}` : `${n}`
+}
+
+// 今天字符串：YYYY-MM-DD
+export function todayStr(): string {
+	const d = new Date()
+	return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
+}
+
+// 从日期字符串取月份：YYYY-MM-DD -> YYYY-MM
+export function monthOf(date: string): string {
+	return date.substring(0, 7)
+}
+
+// 本月：YYYY-MM
+export function todayMonth(): string {
+	return monthOf(todayStr())
+}
+
+// 上一个月：2026-11 -> 2026-10；2026-01 -> 2025-12
+export function prevMonth(month: string): string {
+	let y = parseInt(month.substring(0, 4))
+	let m = parseInt(month.substring(5, 7))
+	m--
+	if (m <= 0) {
+		y--
+		m = 12
+	}
+	return `${y}-${pad2(m)}`
+}
+
+// 下一个月
+export function nextMonth(month: string): string {
+	let y = parseInt(month.substring(0, 4))
+	let m = parseInt(month.substring(5, 7))
+	m++
+	if (m >= 13) {
+		y++
+		m = 1
+	}
+	return `${y}-${pad2(m)}`
+}
+
+// 是否闰年
+function isLeap(y: number): boolean {
+	return (y % 4 == 0 && y % 100 != 0) || y % 400 == 0
+}
+
+// 某月天数：2026-11 -> 30
+export function daysInMonth(month: string): number {
+	const y = parseInt(month.substring(0, 4))
+	const m = parseInt(month.substring(5, 7))
+	const MDAYS: Array<number> = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+	if (m == 2 && isLeap(y)) return 29
+	return MDAYS[m - 1]
+}
+
+// 日期 -> 天数（Howard Hinnant 民用算法），用于推算星期
+function daysFromCivil(y0: number, m0: number, d0: number): number {
+	let y = y0
+	let m = m0
+	if (m <= 2) {
+		y--
+		m += 12
+	}
+	const era = Math.floor((y >= 0 ? y : y - 399) / 400)
+	const yoe = y - era * 400
+	const doy = Math.floor((153 * (m - 3) + 2) / 5) + d0 - 1
+	const doe = yoe * 365 + Math.floor(yoe / 4) - Math.floor(yoe / 100) + doy
+	return era * 146097 + doe - 719468
+}
+
+// 星期：0=周日 ... 6=周六
+export function weekdayOf(date: string): number {
+	const y = parseInt(date.substring(0, 4))
+	const m = parseInt(date.substring(5, 7))
+	const d = parseInt(date.substring(8, 10))
+	const z = daysFromCivil(y, m, d)
+	const w = (z + 4) % 7
+	return w < 0 ? w + 7 : w
+}
+
+const WEEKS: Array<string> = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
+
+// 前一天：2026-11-01 -> 2026-10-31
+export function prevDay(date: string): string {
+	const y = parseInt(date.substring(0, 4))
+	const m = parseInt(date.substring(5, 7))
+	const d = parseInt(date.substring(8, 10))
+	if (d > 1) return `${y}-${pad2(m)}-${pad2(d - 1)}`
+	const pm = prevMonth(monthOf(date))
+	return `${pm}-${pad2(daysInMonth(pm))}`
+}
+
+// 日期展示：今天 / 昨天 / 11月24日 周二
+export function dayLabel(date: string): string {
+	const today = todayStr()
+	if (date == today) return '今天'
+	if (date == prevDay(today)) return '昨天'
+	const m = parseInt(date.substring(5, 7))
+	const d = parseInt(date.substring(8, 10))
+	return `${m}月${d}日 ${WEEKS[weekdayOf(date)]}`
+}
+
+// 金额格式化：12345.6 -> 12,345.60
+export function fmtMoney(n: number): string {
+	const s = n.toFixed(2)
+	const parts = s.split('.')
+	let int = parts[0]
+	let neg = false
+	if (int.startsWith('-')) {
+		neg = true
+		int = int.substring(1)
+	}
+	let out = ''
+	let c = 0
+	for (let i = int.length - 1; i >= 0; i--) {
+		out = int.substring(i, i + 1) + out
+		c++
+		if (c % 3 == 0 && i > 0) out = ',' + out
+	}
+	return (neg ? '-' : '') + out + '.' + parts[1]
+}

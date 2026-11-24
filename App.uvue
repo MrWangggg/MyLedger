@@ -1,0 +1,15 @@
+<script>
+	// 应用生命周期
+	export default {
+		onLaunch: function () {},
+		onShow: function () {},
+		onHide: function () {}
+	}
+</script>
+
+<style>
+	/* 全局页面背景 */
+	page {
+		background-color: #F7F8FC;
+	}
+</style>

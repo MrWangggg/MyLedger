@@ -1,0 +1,420 @@
+<template>
+	<view class="page">
+		<!-- 收支切换 -->
+		<view class="seg-box">
+			<text class="seg-item" :class="type == 0 ? 'seg-out-active' : ''" @click="switchType(0)">支出</text>
+			<text class="seg-item" :class="type == 1 ? 'seg-in-active' : ''" @click="switchType(1)">收入</text>
+		</view>
+
+		<!-- 金额显示 -->
+		<view class="amount-box">
+			<text class="amount-symbol">¥</text>
+			<text class="amount-text">{{ amountText }}</text>
+		</view>
+
+		<!-- 日期与备注 -->
+		<view class="meta-box">
+			<picker mode="date" fields="day" :value="date" :end="today" @change="onDateChange">
+				<view class="meta-item">
+					<text class="meta-icon">📅</text>
+					<text class="meta-text">{{ date }}</text>
+				</view>
+			</picker>
+			<view class="meta-item note-item" @click="editNote">
+				<text class="meta-icon">✏️</text>
+				<text class="meta-text note-text" :class="note.length == 0 ? 'note-placeholder' : ''">
+					{{ note.length > 0 ? note : '点击填写备注' }}
+				</text>
+			</view>
+		</view>
+
+		<!-- 分类宫格 -->
+		<scroll-view class="cat-scroll" scroll-y>
+			<view class="cat-grid">
+				<view class="cat-cell" v-for="(c, i) in cats" :key="c.id" @click="selectCat(i)">
+					<view class="cat-icon-box" :class="i == catIndex ? 'cat-selected' : ''"
+						:style="(i == catIndex ? 'background-color:' + c.color : 'background-color:#F3F5F9')">
+						<text class="cat-icon">{{ c.icon }}</text>
+					</view>
+					<text class="cat-name" :class="i == catIndex ? 'cat-name-active' : ''">{{ c.name }}</text>
+				</view>
+			</view>
+		</scroll-view>
+
+		<!-- 数字键盘 -->
+		<view class="keyboard">
+			<view class="key-row">
+				<text class="key" @click="tapKey('7')">7</text>
+				<text class="key" @click="tapKey('8')">8</text>
+				<text class="key" @click="tapKey('9')">9</text>
+				<text class="key key-fn" @click="tapBack">←</text>
+			</view>
+			<view class="key-row">
+				<text class="key" @click="tapKey('4')">4</text>
+				<text class="key" @click="tapKey('5')">5</text>
+				<text class="key" @click="tapKey('6')">6</text>
+				<text class="key key-fn" @click="tapClear">C</text>
+			</view>
+			<view class="key-row">
+				<text class="key" @click="tapKey('1')">1</text>
+				<text class="key" @click="tapKey('2')">2</text>
+				<text class="key" @click="tapKey('3')">3</text>
+				<text class="key key-save" @click="save">保存</text>
+			</view>
+			<view class="key-row">
+				<text class="key key-zero" @click="tapKey('0')">0</text>
+				<text class="key" @click="tapDot">.</text>
+				<text class="key key-empty"></text>
+			</view>
+		</view>
+	</view>
+</template>
+
+<script>
+	import { addBill, updateBill, loadBills, genId } from '@/utils/data.uts'
+	import { EXPENSE_CATS, INCOME_CATS, Cat } from '@/utils/cats.uts'
+	import { todayStr, todayMonth, pad2 } from '@/utils/date.uts'
+
+	type CatItem = {
+		id: string
+		name: string
+		icon: string
+		color: string
+	}
+
+	export default {
+		data() {
+			return {
+				type: 0,
+				amountText: '0.00',
+				date: todayStr(),
+				today: todayStr(),
+				note: '',
+				catIndex: 0,
+				cats: [] as Array<CatItem>,
+				editId: ''
+			}
+		},
+		onLoad(options: OnLoadOptions) {
+			// 支持编辑模式：?id=xxx
+			if (options['id'] != null) {
+				const id = options['id'] as string
+				this.loadForEdit(id)
+			}
+		},
+		methods: {
+			fillCats() {
+				const src = this.type == 0 ? EXPENSE_CATS : INCOME_CATS
+				const items: Array<CatItem> = []
+				for (let i = 0; i < src.length; i++) {
+					items.push({
+						id: src[i].id,
+						name: src[i].name,
+						icon: src[i].icon,
+						color: src[i].color
+					})
+				}
+				this.cats = items
+				if (this.catIndex >= items.length) this.catIndex = 0
+			},
+			loadForEdit(id: string) {
+				const bills = loadBills()
+				for (let i = 0; i < bills.length; i++) {
+					if (bills[i].id == id) {
+						const b = bills[i]
+						this.editId = b.id
+						this.type = b.type
+						this.date = b.date
+						this.note = b.note
+						this.amountText = b.amount.toFixed(2)
+						this.fillCats()
+						const src = this.type == 0 ? EXPENSE_CATS : INCOME_CATS
+						for (let j = 0; j < src.length; j++) {
+							if (src[j].id == b.catId) {
+								this.catIndex = j
+								break
+							}
+						}
+						uni.setNavigationBarTitle({ title: '编辑账单' })
+						return
+					}
+				}
+			},
+			switchType(t: number) {
+				if (this.type == t) return
+				this.type = t
+				this.catIndex = 0
+				this.fillCats()
+			},
+			onDateChange(e: UniPickerChangeEvent) {
+				const v = e.detail.value as string
+				if (v.length >= 10) this.date = v.substring(0, 10)
+			},
+			editNote() {
+				uni.showModal({
+					title: '备注',
+					editable: true,
+					placeholderContent: '写点什么...',
+					content: this.note,
+					success: (res) => {
+						if (res.confirm && res.content != null) {
+							this.note = res.content as string
+						}
+					}
+				})
+			},
+			selectCat(i: number) {
+				this.catIndex = i
+			},
+			tapKey(k: string) {
+				let t = this.amountText
+				// 去掉初始的 0.00 或前导 0
+				if (t == '0.00' || t == '0') t = ''
+				if (t.indexOf('.') < 0) {
+					// 整数部分最多 8 位
+					if (t.length >= 8) return
+					t += k
+				} else {
+					const dotPos = t.indexOf('.')
+					const dec = t.substring(dotPos + 1)
+					// 小数最多 2 位
+					if (dec.length >= 2) return
+					t += k
+				}
+				this.amountText = t
+			},
+			tapDot() {
+				let t = this.amountText
+				if (t == '0.00' || t == '0') t = '0'
+				if (t.indexOf('.') >= 0) return
+				this.amountText = t + '.'
+			},
+			tapBack() {
+				let t = this.amountText
+				if (t.length <= 1) {
+					this.amountText = '0'
+					return
+				}
+				t = t.substring(0, t.length - 1)
+				if (t.length == 0) t = '0'
+				this.amountText = t
+			},
+			tapClear() {
+				this.amountText = '0'
+			},
+			currentAmount(): number {
+				const v = parseFloat(this.amountText)
+				if (isNaN(v)) return 0
+				return v
+			},
+			save() {
+				const amount = this.currentAmount()
+				if (amount <= 0) {
+					uni.showToast({ title: '请输入金额', icon: 'none' })
+					return
+				}
+				if (this.cats.length == 0) return
+				const cat = this.cats[this.catIndex]
+				if (this.editId.length > 0) {
+					updateBill({
+						id: this.editId,
+						type: this.type,
+						catId: cat.id,
+						amount: amount,
+						date: this.date,
+						note: this.note
+					})
+					uni.showToast({ title: '已保存', icon: 'success' })
+					setTimeout(() => {
+						uni.navigateBack()
+					}, 600)
+					return
+				}
+				addBill({
+					id: genId(),
+					type: this.type,
+					catId: cat.id,
+					amount: amount,
+					date: this.date,
+					note: this.note
+				})
+				uni.showToast({ title: '记好了', icon: 'success' })
+				this.amountText = '0'
+				this.note = ''
+				this.catIndex = 0
+				// 记完回到明细页
+				setTimeout(() => {
+					uni.switchTab({ url: '/pages/detail/detail' })
+				}, 600)
+			}
+		}
+	}
+</script>
+
+<style>
+	.page {
+		flex: 1;
+		background-color: #F7F8FC;
+	}
+
+	/* 收支切换 */
+	.seg-box {
+		flex-direction: row;
+		align-self: center;
+		margin-top: 20rpx;
+		background-color: #ECEFF5;
+		border-radius: 34rpx;
+		padding: 6rpx;
+	}
+	.seg-item {
+		width: 180rpx;
+		height: 60rpx;
+		line-height: 60rpx;
+		text-align: center;
+		font-size: 28rpx;
+		color: #6B7280;
+		border-radius: 30rpx;
+	}
+	.seg-out-active {
+		background-color: #2F6BFF;
+		color: #FFFFFF;
+		font-weight: bold;
+	}
+	.seg-in-active {
+		background-color: #34C77B;
+		color: #FFFFFF;
+		font-weight: bold;
+	}
+
+	/* 金额 */
+	.amount-box {
+		flex-direction: row;
+		align-items: center;
+		justify-content: center;
+		margin-top: 40rpx;
+	}
+	.amount-symbol {
+		font-size: 60rpx;
+		font-weight: bold;
+		color: #1F2937;
+		margin-right: 12rpx;
+	}
+	.amount-text {
+		font-size: 88rpx;
+		font-weight: bold;
+		color: #1F2937;
+	}
+
+	/* 日期与备注 */
+	.meta-box {
+		flex-direction: row;
+		justify-content: center;
+		margin: 30rpx 24rpx 0 24rpx;
+	}
+	.meta-item {
+		flex-direction: row;
+		align-items: center;
+		background-color: #FFFFFF;
+		border-radius: 30rpx;
+		padding: 14rpx 26rpx;
+		margin: 0 12rpx;
+	}
+	.note-item {
+		max-width: 420rpx;
+	}
+	.meta-icon {
+		font-size: 26rpx;
+		margin-right: 10rpx;
+	}
+	.meta-text {
+		font-size: 26rpx;
+		color: #1F2937;
+	}
+	.note-text {
+		max-width: 320rpx;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		lines: 1;
+	}
+	.note-placeholder {
+		color: #B0B8C4;
+	}
+
+	/* 分类宫格 */
+	.cat-scroll {
+		flex: 1;
+		margin: 24rpx;
+	}
+	.cat-grid {
+		flex-direction: row;
+		flex-wrap: wrap;
+	}
+	.cat-cell {
+		width: 25%;
+		align-items: center;
+		margin-bottom: 30rpx;
+	}
+	.cat-icon-box {
+		width: 92rpx;
+		height: 92rpx;
+		border-radius: 46rpx;
+		justify-content: center;
+		align-items: center;
+	}
+	.cat-selected {
+		box-shadow: 0 6rpx 16rpx rgba(47, 107, 255, 0.35);
+	}
+	.cat-icon {
+		font-size: 42rpx;
+	}
+	.cat-name {
+		margin-top: 12rpx;
+		font-size: 24rpx;
+		color: #4B5563;
+	}
+	.cat-name-active {
+		color: #2F6BFF;
+		font-weight: bold;
+	}
+
+	/* 键盘 */
+	.keyboard {
+		background-color: #FFFFFF;
+		padding: 16rpx 20rpx 30rpx 20rpx;
+	}
+	.key-row {
+		flex-direction: row;
+		margin-bottom: 16rpx;
+	}
+	.key {
+		flex: 1;
+		height: 100rpx;
+		line-height: 100rpx;
+		text-align: center;
+		font-size: 36rpx;
+		font-weight: bold;
+		color: #1F2937;
+		background-color: #F5F7FA;
+		border-radius: 16rpx;
+		margin: 0 8rpx;
+	}
+	.key:active {
+		background-color: #E2E8F0;
+	}
+	.key-fn {
+		background-color: #ECEFF5;
+		color: #2F6BFF;
+	}
+	.key-save {
+		background-color: #2F6BFF;
+		color: #FFFFFF;
+		font-size: 32rpx;
+	}
+	.key-zero {
+		flex: 2;
+	}
+
+	.key-empty {
+		background-color: transparent;
+	}
+</style>

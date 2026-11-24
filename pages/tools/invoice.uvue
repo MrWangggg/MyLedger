@@ -1,0 +1,245 @@
+<template>
+	<view class="page">
+		<scroll-view class="body" scroll-y>
+			<!-- 说明卡 -->
+			<view class="card tip-card">
+				<text class="tip-title">🧾 发票抬头管理</text>
+				<text class="tip-text">保存常用发票抬头信息，开票时一键复制给商家。所有数据仅保存在本机。</text>
+			</view>
+
+			<!-- 空状态 -->
+			<view class="empty" v-if="list.length == 0">
+				<text class="empty-icon">🧾</text>
+				<text class="empty-text">还没有保存发票抬头</text>
+				<text class="empty-tip">点击下方按钮添加</text>
+			</view>
+
+			<!-- 抬头列表 -->
+			<view class="inv-list" v-if="list.length > 0">
+				<view class="inv-item" v-for="(inv, i) in list" :key="inv.id">
+					<view class="inv-main" @click="copyInvoice(i)">
+						<text class="inv-title">{{ inv.title }}</text>
+						<text class="inv-tax">税号：{{ inv.taxId }}</text>
+						<text class="inv-copy">点击复制完整信息</text>
+					</view>
+					<text class="inv-del" @click="removeInvoice(i)">删</text>
+				</view>
+			</view>
+			<view class="body-space"></view>
+		</scroll-view>
+
+		<!-- 添加按钮 -->
+		<view class="footer">
+			<view class="add-btn" @click="addInvoice">
+				<text class="add-btn-text">+ 添加抬头</text>
+			</view>
+		</view>
+	</view>
+</template>
+
+<script>
+	import { loadInvoices, saveInvoices, genId } from '@/utils/data.uts'
+
+	type InvoiceItem = {
+		id: string
+		title: string
+		taxId: string
+		createdAt: string
+	}
+
+	export default {
+		data() {
+			return {
+				list: [] as Array<InvoiceItem>
+			}
+		},
+		onShow() {
+			this.refresh()
+		},
+		methods: {
+			refresh() {
+				this.list = loadInvoices()
+			},
+			addInvoice() {
+				this.showModal(-1)
+			},
+			showModal(index: number) {
+				const isEdit = index >= 0
+				const old = isEdit ? this.list[index] : null
+				uni.showModal({
+					title: isEdit ? '编辑抬头' : '添加抬头',
+					editable: true,
+					placeholderContent: '格式：抬头名称 税号（空格分隔）',
+					content: old != null ? `${old.title} ${old.taxId}` : '',
+					success: (res) => {
+						if (!res.confirm) return
+						const input = (res.content as string).trim()
+						if (input.length == 0) return
+						const parts = input.split(/\s+/)
+						if (parts.length < 2) {
+							uni.showToast({ title: '格式：抬头 税号', icon: 'none' })
+							return
+						}
+						const list = loadInvoices()
+						if (isEdit && old != null) {
+							list.splice(index, 1, {
+								id: old.id,
+								title: parts[0],
+								taxId: parts[1],
+								createdAt: old.createdAt
+							})
+						} else {
+							list.push({
+								id: genId(),
+								title: parts[0],
+								taxId: parts[1],
+								createdAt: ''
+							})
+						}
+						saveInvoices(list)
+						this.refresh()
+						uni.showToast({ title: '已保存', icon: 'success' })
+					}
+				})
+			},
+			copyInvoice(i: number) {
+				const inv = this.list[i]
+				uni.setClipboardData({
+					data: `发票抬头：${inv.title}\n税号：${inv.taxId}`,
+					success: () => {
+						uni.showToast({ title: '已复制到剪贴板', icon: 'success' })
+					}
+				})
+			},
+			removeInvoice(i: number) {
+				uni.showModal({
+					title: '删除抬头',
+					content: `确定删除「${this.list[i].title}」吗？`,
+					success: (res) => {
+						if (res.confirm) {
+							const list = loadInvoices()
+							list.splice(i, 1)
+							saveInvoices(list)
+							this.refresh()
+							uni.showToast({ title: '已删除', icon: 'success' })
+						}
+					}
+				})
+			}
+		}
+	}
+</script>
+
+<style>
+	.page {
+		flex: 1;
+		background-color: #F7F8FC;
+	}
+	.body {
+		flex: 1;
+	}
+
+	.card {
+		margin: 24rpx;
+		background-color: #FFFFFF;
+		border-radius: 20rpx;
+		padding: 30rpx;
+	}
+	.tip-card {
+		background-color: #FFF8EC;
+	}
+	.tip-title {
+		font-size: 28rpx;
+		font-weight: bold;
+		color: #92600A;
+	}
+	.tip-text {
+		margin-top: 10rpx;
+		font-size: 24rpx;
+		color: #B08968;
+		line-height: 38rpx;
+	}
+
+	.empty {
+		margin-top: 140rpx;
+		align-items: center;
+	}
+	.empty-icon {
+		font-size: 90rpx;
+	}
+	.empty-text {
+		margin-top: 20rpx;
+		font-size: 30rpx;
+		color: #4B5563;
+	}
+	.empty-tip {
+		margin-top: 10rpx;
+		font-size: 24rpx;
+		color: #9CA3AF;
+	}
+
+	.inv-list {
+		margin: 8rpx 24rpx 0 24rpx;
+		background-color: #FFFFFF;
+		border-radius: 20rpx;
+		padding: 0 24rpx;
+	}
+	.inv-item {
+		flex-direction: row;
+		align-items: center;
+		padding: 24rpx 0;
+		border-bottom-width: 1px;
+		border-bottom-style: solid;
+		border-bottom-color: #F3F4F6;
+	}
+	.inv-main {
+		flex: 1;
+		flex-direction: column;
+	}
+	.inv-title {
+		font-size: 30rpx;
+		font-weight: bold;
+		color: #1F2937;
+	}
+	.inv-tax {
+		margin-top: 8rpx;
+		font-size: 24rpx;
+		color: #6B7280;
+	}
+	.inv-copy {
+		margin-top: 8rpx;
+		font-size: 20rpx;
+		color: #2F6BFF;
+	}
+	.inv-del {
+		width: 56rpx;
+		height: 56rpx;
+		line-height: 56rpx;
+		text-align: center;
+		font-size: 24rpx;
+		color: #EF4444;
+		background-color: #FEF2F2;
+		border-radius: 12rpx;
+	}
+
+	.body-space {
+		height: 40rpx;
+	}
+
+	.footer {
+		padding: 20rpx 24rpx 40rpx 24rpx;
+		background-color: #FFFFFF;
+	}
+	.add-btn {
+		height: 92rpx;
+		background-color: #2F6BFF;
+		border-radius: 46rpx;
+		justify-content: center;
+		align-items: center;
+	}
+	.add-btn-text {
+		font-size: 32rpx;
+		font-weight: bold;
+		color: #FFFFFF;
+	}
+</style>

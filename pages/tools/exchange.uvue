@@ -1,0 +1,269 @@
+<template>
+	<scroll-view class="page" scroll-y>
+		<!-- 换入币种 -->
+		<view class="card">
+			<text class="card-title">汇率转换</text>
+			<text class="card-sub">内置常用汇率（近似值），数据打包在本地</text>
+
+			<view class="ex-row">
+				<text class="ex-label">金额</text>
+				<input class="ex-input" type="digit" :value="amount" @input="onAmountInput" placeholder="输入金额" />
+			</view>
+
+			<view class="ex-row">
+				<text class="ex-label">从</text>
+				<picker mode="selector" :range="currencyNames" :value="fromIndex" @change="onFromChange">
+					<view class="ex-pick">
+						<text class="ex-pick-flag">{{ currencies[fromIndex].flag }}</text>
+						<text class="ex-pick-name">{{ currencies[fromIndex].name }}</text>
+						<text class="ex-pick-arrow">›</text>
+					</view>
+				</picker>
+			</view>
+
+			<view class="swap-btn" @click="swap">
+				<text class="swap-icon">⇅</text>
+			</view>
+
+			<view class="ex-row">
+				<text class="ex-label">到</text>
+				<picker mode="selector" :range="currencyNames" :value="toIndex" @change="onToChange">
+					<view class="ex-pick">
+						<text class="ex-pick-flag">{{ currencies[toIndex].flag }}</text>
+						<text class="ex-pick-name">{{ currencies[toIndex].name }}</text>
+						<text class="ex-pick-arrow">›</text>
+					</view>
+				</picker>
+			</view>
+		</view>
+
+		<!-- 结果 -->
+		<view class="card result-card" v-if="resultText.length > 0">
+			<text class="result-label">转换结果</text>
+			<text class="result-value">{{ resultText }}</text>
+			<text class="result-rate">1 {{ currencies[fromIndex].name }} ≈ {{ rateText }} {{ currencies[toIndex].name }}</text>
+			<text class="result-tip">汇率为内置近似值，实际以银行牌价为准</text>
+		</view>
+
+		<!-- 常用汇率速查（对人民币） -->
+		<view class="card">
+			<text class="card-title">常用货币对人民币</text>
+			<view class="quick-row" v-for="(c, i) in currencies" :key="c.code">
+				<text class="quick-flag">{{ c.flag }}</text>
+				<text class="quick-name">{{ c.name }}</text>
+				<text class="quick-rate">1 {{ c.name }} ≈ {{ toCNY(c).toString() }} 元</text>
+			</view>
+		</view>
+		<view class="bottom-space"></view>
+	</scroll-view>
+</template>
+
+<script>
+	type Currency = {
+		code: string
+		name: string
+		flag: string
+		toCNY: number // 1 单位外币兑人民币
+	}
+
+	type CurrencyItem = {
+		code: string
+		name: string
+		flag: string
+		toCNY: number
+	}
+
+	export default {
+		data() {
+			const base: Array<Currency> = [
+				{ code: 'CNY', name: '人民币', flag: '🇨🇳', toCNY: 1 },
+				{ code: 'USD', name: '美元', flag: '🇺🇸', toCNY: 7.24 },
+				{ code: 'EUR', name: '欧元', flag: '🇪🇺', toCNY: 7.85 },
+				{ code: 'JPY', name: '日元', flag: '🇯🇵', toCNY: 0.048 },
+				{ code: 'GBP', name: '英镑', flag: '🇬🇧', toCNY: 9.18 },
+				{ code: 'HKD', name: '港币', flag: '🇭🇰', toCNY: 0.93 },
+				{ code: 'KRW', name: '韩元', flag: '🇰🇷', toCNY: 0.0052 },
+				{ code: 'SGD', name: '新加坡元', flag: '🇸🇬', toCNY: 5.38 }
+			]
+			const names: Array<string> = []
+			for (let i = 0; i < base.length; i++) names.push(base[i].name)
+			return {
+				currencies: base,
+				currencyNames: names,
+				fromIndex: 0,
+				toIndex: 1,
+				amount: '100',
+				resultText: '',
+				rateText: ''
+			}
+		},
+		methods: {
+			onAmountInput(e: InputEvent) {
+				this.amount = e.detail.value
+				this.convert()
+			},
+			onFromChange(e: UniPickerChangeEvent) {
+				this.fromIndex = e.detail.value as number
+				this.convert()
+			},
+			onToChange(e: UniPickerChangeEvent) {
+				this.toIndex = e.detail.value as number
+				this.convert()
+			},
+			swap() {
+				const t = this.fromIndex
+				this.fromIndex = this.toIndex
+				this.toIndex = t
+				this.convert()
+			},
+			toCNY(c: CurrencyItem): number {
+				return c.toCNY
+			},
+			convert() {
+				const v = parseFloat(this.amount)
+				if (isNaN(v) || v < 0) {
+					this.resultText = ''
+					return
+				}
+				const from = this.currencies[this.fromIndex]
+				const to = this.currencies[this.toIndex]
+				const out = v / from.toCNY * to.toCNY
+				this.rateText = (to.toCNY / from.toCNY).toFixed(4)
+				this.resultText = `${this.trimNum(v)} ${from.name} ≈ ${this.trimNum(out)} ${to.name}`
+			},
+			trimNum(n: number): string {
+				if (n >= 100) return n.toFixed(2)
+				return n.toFixed(4).replace(/0+$/, '').replace(/\.$/, '')
+			}
+		}
+	}
+</script>
+
+<style>
+	.page {
+		flex: 1;
+		background-color: #F7F8FC;
+	}
+
+	.card {
+		margin: 24rpx;
+		background-color: #FFFFFF;
+		border-radius: 20rpx;
+		padding: 30rpx;
+	}
+	.card-title {
+		font-size: 30rpx;
+		font-weight: bold;
+		color: #1F2937;
+	}
+	.card-sub {
+		margin-top: 8rpx;
+		font-size: 22rpx;
+		color: #9CA3AF;
+	}
+
+	.ex-row {
+		flex-direction: row;
+		align-items: center;
+		margin-top: 28rpx;
+	}
+	.ex-label {
+		width: 100rpx;
+		font-size: 28rpx;
+		color: #374151;
+	}
+	.ex-input {
+		flex: 1;
+		height: 80rpx;
+		background-color: #F5F7FA;
+		border-radius: 14rpx;
+		padding: 0 20rpx;
+		font-size: 32rpx;
+	}
+	.ex-pick {
+		flex-direction: row;
+		align-items: center;
+		height: 80rpx;
+		background-color: #F5F7FA;
+		border-radius: 14rpx;
+		padding: 0 20rpx;
+	}
+	.ex-pick-flag {
+		font-size: 32rpx;
+		margin-right: 10rpx;
+	}
+	.ex-pick-name {
+		font-size: 28rpx;
+		color: #1F2937;
+	}
+	.ex-pick-arrow {
+		margin-left: 12rpx;
+		font-size: 28rpx;
+		color: #C0C8D4;
+	}
+
+	.swap-btn {
+		align-self: center;
+		margin-top: 20rpx;
+		width: 72rpx;
+		height: 72rpx;
+		border-radius: 36rpx;
+		background-color: #EEF4FF;
+		justify-content: center;
+		align-items: center;
+	}
+	.swap-icon {
+		font-size: 36rpx;
+		color: #2F6BFF;
+	}
+
+	.result-card {
+		background-color: #F0F6FF;
+	}
+	.result-label {
+		font-size: 24rpx;
+		color: #6B7280;
+	}
+	.result-value {
+		margin-top: 12rpx;
+		font-size: 40rpx;
+		font-weight: bold;
+		color: #2F6BFF;
+	}
+	.result-rate {
+		margin-top: 12rpx;
+		font-size: 26rpx;
+		color: #374151;
+	}
+	.result-tip {
+		margin-top: 10rpx;
+		font-size: 20rpx;
+		color: #9CA3AF;
+	}
+
+	.quick-row {
+		flex-direction: row;
+		align-items: center;
+		height: 76rpx;
+		border-bottom-width: 1px;
+		border-bottom-style: solid;
+		border-bottom-color: #F3F4F6;
+	}
+	.quick-flag {
+		font-size: 30rpx;
+		margin-right: 14rpx;
+	}
+	.quick-name {
+		flex: 1;
+		font-size: 26rpx;
+		color: #374151;
+	}
+	.quick-rate {
+		font-size: 26rpx;
+		color: #6B7280;
+	}
+
+	.bottom-space {
+		height: 40rpx;
+	}
+</style>

@@ -1,0 +1,16 @@
+{
+    "name" : "light-ledger",
+    "appid" : "",
+    "description" : "轻记账，纯本地记账小程序，不依赖后台",
+    "versionName" : "1.0.0",
+    "versionCode" : "100",
+    "uni-app-x" : {},
+    "mp-weixin" : {
+        "appid" : "",
+        "setting" : {
+            "urlCheck" : false,
+            "minified" : true
+        },
+        "usingComponents" : true
+    }
+}

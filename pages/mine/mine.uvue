@@ -1,0 +1,315 @@
+<template>
+	<scroll-view class="page" scroll-y>
+		<!-- 头部 -->
+		<view class="head-card">
+			<view class="avatar-box">
+				<text class="avatar-text">👤</text>
+			</view>
+			<view class="head-info">
+				<text class="head-name">轻记账用户</text>
+				<text class="head-sub">数据保存在本机，不依赖任何后台</text>
+			</view>
+			<view class="privacy-badge">
+				<text class="privacy-text">🔒 纯本地</text>
+			</view>
+		</view>
+
+		<!-- 记账统计 -->
+		<view class="card">
+			<text class="card-title">记账统计</text>
+			<view class="stat-grid">
+				<view class="stat-cell">
+					<text class="stat-num">{{ totalDays }}</text>
+					<text class="stat-label">记账天数</text>
+				</view>
+				<view class="stat-cell">
+					<text class="stat-num">{{ billCount }}</text>
+					<text class="stat-label">记账笔数</text>
+				</view>
+				<view class="stat-cell">
+					<text class="stat-num">¥{{ fmtMoney(totalIncome) }}</text>
+					<text class="stat-label">累计收入</text>
+				</view>
+				<view class="stat-cell">
+					<text class="stat-num">¥{{ fmtMoney(totalExpense) }}</text>
+					<text class="stat-label">累计支出</text>
+				</view>
+			</view>
+		</view>
+
+		<!-- 通用设置 -->
+		<view class="card">
+			<text class="card-title">通用</text>
+			<view class="cell" @click="exportData">
+				<view class="cell-left">
+					<text class="cell-icon">📤</text>
+					<text class="cell-name">导出数据（复制到剪贴板）</text>
+				</view>
+				<text class="cell-arrow">›</text>
+			</view>
+			<view class="cell" @click="clearCache">
+				<view class="cell-left">
+					<text class="cell-icon">🧹</text>
+					<text class="cell-name">存储占用查看</text>
+				</view>
+				<text class="cell-arrow">›</text>
+			</view>
+			<view class="cell" @click="clearData">
+				<view class="cell-left">
+					<text class="cell-icon">🗑️</text>
+					<text class="cell-name">清空所有账单数据</text>
+				</view>
+				<text class="cell-arrow">›</text>
+			</view>
+		</view>
+
+		<!-- 关于 -->
+		<view class="card">
+			<text class="card-title">关于</text>
+			<view class="cell" @click="showAbout">
+				<view class="cell-left">
+					<text class="cell-icon">ℹ️</text>
+					<text class="cell-name">关于轻记账</text>
+				</view>
+				<text class="cell-arrow">›</text>
+			</view>
+			<view class="about-text">
+				轻记账 v1.0.0 · 基于 uni-app x + UTS 开发的纯本地记账小程序，所有数据仅保存在你的设备上，请自行导出备份。
+			</view>
+		</view>
+
+		<view class="bottom-space"></view>
+	</scroll-view>
+</template>
+
+<script>
+	import { loadBills, loadAssets, loadInvoices } from '@/utils/data.uts'
+	import { fmtMoney } from '@/utils/date.uts'
+
+	export default {
+		data() {
+			return {
+				totalDays: 0,
+				billCount: 0,
+				totalIncome: 0,
+				totalExpense: 0
+			}
+		},
+		onShow() {
+			this.refresh()
+		},
+		methods: {
+			refresh() {
+				const bills = loadBills()
+				this.billCount = bills.length
+				let income = 0
+				let expense = 0
+				const daySet: Array<string> = []
+				for (let i = 0; i < bills.length; i++) {
+					const b = bills[i]
+					if (b.type == 1) income += b.amount
+					else expense += b.amount
+					if (daySet.indexOf(b.date) < 0) daySet.push(b.date)
+				}
+				this.totalIncome = income
+				this.totalExpense = expense
+				this.totalDays = daySet.length
+			},
+			exportData() {
+				const bills = loadBills()
+				if (bills.length == 0) {
+					uni.showToast({ title: '暂无数据可导出', icon: 'none' })
+					return
+				}
+				const lines: Array<string> = ['日期,类型,分类,金额,备注']
+				for (let i = 0; i < bills.length; i++) {
+					const b = bills[i]
+					lines.push(`${b.date},${b.type == 1 ? '收入' : '支出'},${b.catId},${b.amount},${b.note}`)
+				}
+				uni.setClipboardData({
+					data: lines.join('\n'),
+					success: () => {
+						uni.showToast({ title: '已复制 CSV 到剪贴板', icon: 'success' })
+					}
+				})
+			},
+			clearCache() {
+				// 只展示存储占用信息，不误删账单数据
+				const info = uni.getStorageInfoSync()
+				const keys = info.keys
+				let dataCount = 0
+				for (let i = 0; i < keys.length; i++) {
+					if (keys[i].indexOf('ll_') == 0) dataCount++
+				}
+				uni.showModal({
+					title: '存储占用',
+					content: `已用 ${info.currentSize} KB / 约 ${info.limitSize} KB\n其中记账相关数据 ${dataCount} 项。\n清理账单请使用「清空所有账单数据」，本项不会误删数据。`,
+					showCancel: false,
+					confirmText: '知道了'
+				})
+			},
+			clearData() {
+				uni.showModal({
+					title: '⚠️ 危险操作',
+					content: '将删除所有账单、预算、资产、发票数据，且不可恢复！确定继续吗？',
+					confirmText: '全部删除',
+					confirmColor: '#EF4444',
+					success: (res) => {
+						if (res.confirm) {
+							// 二次确认
+							uni.showModal({
+								title: '再次确认',
+								content: '真的要清空全部数据吗？此操作不可恢复！',
+								confirmText: '清空',
+								confirmColor: '#EF4444',
+								success: (res2) => {
+									if (res2.confirm) {
+										uni.removeStorageSync('ll_bills')
+										uni.removeStorageSync('ll_budgets')
+										uni.removeStorageSync('ll_assets')
+										uni.removeStorageSync('ll_invoice')
+										uni.showToast({ title: '已清空', icon: 'success' })
+										this.refresh()
+									}
+								}
+							})
+						}
+					}
+				})
+			},
+			showAbout() {
+				uni.showModal({
+					title: '轻记账',
+					content: '一款不依赖后台的纯本地记账小程序。账单、预算、资产全部保存在本机，保护你的隐私。',
+					showCancel: false,
+					confirmText: '知道了'
+				})
+			},
+			fmtMoney(n: number): string {
+				return fmtMoney(n)
+			}
+		}
+	}
+</script>
+
+<style>
+	.page {
+		flex: 1;
+		background-color: #F7F8FC;
+	}
+
+	/* 头部 */
+	.head-card {
+		flex-direction: row;
+		align-items: center;
+		margin: 24rpx;
+		padding: 34rpx 30rpx;
+		background-color: #FFFFFF;
+		border-radius: 24rpx;
+	}
+	.avatar-box {
+		width: 100rpx;
+		height: 100rpx;
+		border-radius: 50rpx;
+		background-color: #EEF4FF;
+		justify-content: center;
+		align-items: center;
+	}
+	.avatar-text {
+		font-size: 48rpx;
+	}
+	.head-info {
+		flex: 1;
+		margin-left: 24rpx;
+		flex-direction: column;
+	}
+	.head-name {
+		font-size: 32rpx;
+		font-weight: bold;
+		color: #1F2937;
+	}
+	.head-sub {
+		margin-top: 8rpx;
+		font-size: 22rpx;
+		color: #9CA3AF;
+	}
+	.privacy-badge {
+		background-color: #E8F5EE;
+		border-radius: 20rpx;
+		padding: 8rpx 18rpx;
+	}
+	.privacy-text {
+		font-size: 20rpx;
+		color: #34C77B;
+	}
+
+	/* 通用卡片 */
+	.card {
+		margin: 24rpx;
+		background-color: #FFFFFF;
+		border-radius: 20rpx;
+		padding: 30rpx;
+	}
+	.card-title {
+		font-size: 30rpx;
+		font-weight: bold;
+		color: #1F2937;
+	}
+
+	/* 统计宫格 */
+	.stat-grid {
+		flex-direction: row;
+		flex-wrap: wrap;
+		margin-top: 10rpx;
+	}
+	.stat-cell {
+		width: 50%;
+		align-items: center;
+		margin-top: 26rpx;
+	}
+	.stat-num {
+		font-size: 34rpx;
+		font-weight: bold;
+		color: #1F2937;
+	}
+	.stat-label {
+		margin-top: 8rpx;
+		font-size: 22rpx;
+		color: #9CA3AF;
+	}
+
+	/* 设置项 */
+	.cell {
+		flex-direction: row;
+		justify-content: space-between;
+		align-items: center;
+		height: 92rpx;
+	}
+	.cell-left {
+		flex-direction: row;
+		align-items: center;
+	}
+	.cell-icon {
+		font-size: 32rpx;
+		margin-right: 16rpx;
+	}
+	.cell-name {
+		font-size: 28rpx;
+		color: #374151;
+	}
+	.cell-arrow {
+		font-size: 32rpx;
+		color: #C0C8D4;
+	}
+
+	.about-text {
+		margin-top: 16rpx;
+		font-size: 22rpx;
+		color: #9CA3AF;
+		line-height: 36rpx;
+	}
+
+	.bottom-space {
+		height: 40rpx;
+	}
+</style>

@@ -1,0 +1,53 @@
+/**
+ * 收支分类定义：轻记账
+ * 每个分类带 emoji 图标与主题色，颜色直接内联到样式
+ */
+
+export class Cat {
+	id: string = ''
+	name: string = ''
+	icon: string = ''
+	color: string = ''
+
+	constructor(id: string, name: string, icon: string, color: string) {
+		this.id = id
+		this.name = name
+		this.icon = icon
+		this.color = color
+	}
+}
+
+// 支出分类
+export const EXPENSE_CATS: Array<Cat> = [
+	new Cat('food', '餐饮', '🍜', '#FF7043'),
+	new Cat('shopping', '购物', '🛍️', '#7E57C2'),
+	new Cat('transport', '交通', '🚇', '#26A69A'),
+	new Cat('housing', '居住', '🏠', '#5C6BC0'),
+	new Cat('entertainment', '娱乐', '🎮', '#EC407A'),
+	new Cat('medical', '医疗', '💊', '#EF5350'),
+	new Cat('education', '学习', '📚', '#42A5F5'),
+	new Cat('social', '人情', '🎁', '#FFA726'),
+	new Cat('travel', '旅行', '✈️', '#26C6DA'),
+	new Cat('pet', '宠物', '🐱', '#8D6E63'),
+	new Cat('digital', '数码', '📱', '#78909C'),
+	new Cat('other-out', '其他', '📦', '#90A4AE'),
+]
+
+// 收入分类
+export const INCOME_CATS: Array<Cat> = [
+	new Cat('salary', '工资', '💰', '#66BB6A'),
+	new Cat('bonus', '奖金', '🏆', '#FFB300'),
+	new Cat('invest', '理财', '📈', '#29B6F6'),
+	new Cat('redpacket', '红包', '🧧', '#EF5350'),
+	new Cat('parttime', '兼职', '💼', '#AB47BC'),
+	new Cat('other-in', '其他', '🧧', '#9CCC65'),
+]
+
+// 按 id 找分类
+export function findCat(id: string): Cat {
+	const all = EXPENSE_CATS.concat(INCOME_CATS)
+	for (let i = 0; i < all.length; i++) {
+		if (all[i].id == id) return all[i]
+	}
+	return new Cat('unknown', '未知', '❓', '#90A4AE')
+}

@@ -1,0 +1,7 @@
+import App from './App.uvue'
+import { createSSRApp } from 'vue'
+
+// 应用入口（uni-app x 规范）
+export function createApp() {
+	createSSRApp(App)
+}

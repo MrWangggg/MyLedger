@@ -1,0 +1,392 @@
+<template>
+	<scroll-view class="page" scroll-y>
+		<!-- 月份切换 -->
+		<view class="month-bar">
+			<view class="month-arrow" @click="goPrevMonth">
+				<text class="arrow-text">‹</text>
+			</view>
+			<view class="month-title-box">
+				<picker mode="date" fields="month" :value="month" @change="onMonthPick">
+					<text class="month-title">{{ monthLabel }}</text>
+				</picker>
+			</view>
+			<view class="month-arrow" @click="goNextMonth">
+				<text class="arrow-text">›</text>
+			</view>
+		</view>
+
+		<!-- 收支汇总卡 -->
+		<view class="sum-card">
+			<view class="sum-row">
+				<view class="sum-item">
+					<text class="sum-label">本月收入</text>
+					<text class="sum-value income-text">+{{ fmtMoney(stat.income) }}</text>
+				</view>
+				<view class="sum-item">
+					<text class="sum-label">本月支出</text>
+					<text class="sum-value">-{{ fmtMoney(stat.expense) }}</text>
+				</view>
+				<view class="sum-item">
+					<text class="sum-label">结余</text>
+					<text class="sum-value">{{ fmtMoney(stat.balance) }}</text>
+				</view>
+			</view>
+			<!-- 预算进度 -->
+			<view class="budget-box" v-if="budget > 0">
+				<view class="budget-head">
+					<text class="budget-text">预算 {{ fmtMoney(budget) }}</text>
+					<text class="budget-text" :class="budgetLeft < 0 ? 'warn-text' : ''">剩余 {{ fmtMoney(budgetLeft) }}</text>
+				</view>
+				<view class="budget-track">
+					<view class="budget-fill" :class="budgetLeft < 0 ? 'budget-over' : ''" :style="'width:' + budgetPercent + '%'"></view>
+				</view>
+			</view>
+		</view>
+
+		<!-- 空状态 -->
+		<view class="empty" v-if="groups.length == 0">
+			<text class="empty-icon">📒</text>
+			<text class="empty-text">本月还没有账单</text>
+			<text class="empty-tip">点击底部大加号记一笔吧</text>
+		</view>
+
+		<!-- 按日分组列表 -->
+		<view class="day-group" v-for="(g, gi) in groups" :key="g.date">
+			<view class="day-head">
+				<text class="day-label">{{ dayTitle(gi) }}</text>
+				<view class="day-sum">
+					<text class="day-out" v-if="g.expense > 0">支出 {{ fmtMoney(g.expense) }}</text>
+					<text class="day-in" v-if="g.income > 0">收入 {{ fmtMoney(g.income) }}</text>
+				</view>
+			</view>
+			<view class="bill-item" v-for="(b, bi) in g.items" :key="b.id">
+				<view class="bill-icon-box" :style="'background-color:' + catColor(b.catId) + '22'">
+					<text class="bill-icon">{{ catIcon(b.catId) }}</text>
+				</view>
+				<view class="bill-info">
+					<text class="bill-cat">{{ catName(b.catId) }}</text>
+					<text class="bill-note" v-if="b.note.length > 0">{{ b.note }}</text>
+				</view>
+				<text class="bill-amount" :class="b.type == 1 ? 'income-text' : ''">
+					{{ b.type == 1 ? '+' : '-' }}{{ fmtMoney(b.amount) }}
+				</text>
+				<text class="bill-del" @click="confirmRemove(b.id)">删</text>
+			</view>
+		</view>
+
+		<view class="bottom-space"></view>
+	</scroll-view>
+</template>
+
+<script>
+	import { loadBills, monthStat, groupByDay, removeBill, getBudget, MonthStat } from '@/utils/data.uts'
+	import { findCat } from '@/utils/cats.uts'
+	import { fmtMoney, todayMonth, prevMonth, nextMonth, pad2, dayLabel } from '@/utils/date.uts'
+
+	type GroupItem = {
+		date: string
+		label: string
+		income: number
+		expense: number
+		items: Array<any>
+	}
+
+	export default {
+		data() {
+			return {
+				month: todayMonth(),
+				groups: [] as Array<GroupItem>,
+				stat: { income: 0, expense: 0, balance: 0 } as MonthStat,
+				budget: 0
+			}
+		},
+		computed: {
+			monthLabel(): string {
+				return this.month.replace('-', '年') + '月'
+			},
+			budgetLeft(): number {
+				return this.budget - this.stat.expense
+			},
+			budgetPercent(): number {
+				if (this.budget <= 0) return 0
+				const p = Math.round(this.stat.expense / this.budget * 100)
+				if (p > 100) return 100
+				return p
+			}
+		},
+		onShow() {
+			this.refresh()
+		},
+		methods: {
+			refresh() {
+				const bills = loadBills()
+				this.stat = monthStat(bills, this.month)
+				this.budget = getBudget(this.month)
+				const gs = groupByDay(bills, this.month)
+				const items: Array<GroupItem> = []
+				for (let i = 0; i < gs.length; i++) {
+					const g = gs[i]
+					const arr: Array<any> = []
+					for (let j = 0; j < g.items.length; j++) {
+						arr.push({
+							id: g.items[j].id,
+							type: g.items[j].type,
+							catId: g.items[j].catId,
+							amount: g.items[j].amount,
+							note: g.items[j].note
+						})
+					}
+					items.push({
+						date: g.date,
+						label: g.label,
+						income: g.income,
+						expense: g.expense,
+						items: arr
+					})
+				}
+				this.groups = items
+			},
+			goPrevMonth() {
+				this.month = prevMonth(this.month)
+				this.refresh()
+			},
+			goNextMonth() {
+				this.month = nextMonth(this.month)
+				this.refresh()
+			},
+			onMonthPick(e: UniPickerChangeEvent) {
+				const v = e.detail.value as string
+				if (v.length >= 7) {
+					this.month = v.substring(0, 7)
+					this.refresh()
+				}
+			},
+			dayTitle(gi: number): string {
+				const g = this.groups[gi]
+				return dayLabel(g.date)
+			},
+			catName(id: string): string {
+				return findCat(id).name
+			},
+			catIcon(id: string): string {
+				return findCat(id).icon
+			},
+			catColor(id: string): string {
+				return findCat(id).color
+			},
+			fmtMoney(n: number): string {
+				return fmtMoney(n)
+			},
+			confirmRemove(id: string) {
+				uni.showModal({
+					title: '删除账单',
+					content: '确定删除这笔账单吗？',
+					success: (res) => {
+						if (res.confirm) {
+							removeBill(id)
+							this.refresh()
+							uni.showToast({ title: '已删除', icon: 'success' })
+						}
+					}
+				})
+			}
+		}
+	}
+</script>
+
+<style>
+	.page {
+		flex: 1;
+		background-color: #F7F8FC;
+	}
+
+	/* 月份切换 */
+	.month-bar {
+		flex-direction: row;
+		align-items: center;
+		justify-content: center;
+		padding: 12rpx 30rpx;
+	}
+	.month-arrow {
+		width: 64rpx;
+		height: 64rpx;
+		justify-content: center;
+		align-items: center;
+	}
+	.arrow-text {
+		font-size: 44rpx;
+		color: #6B7280;
+	}
+	.month-title-box {
+		padding: 8rpx 24rpx;
+		background-color: #FFFFFF;
+		border-radius: 32rpx;
+	}
+	.month-title {
+		font-size: 30rpx;
+		font-weight: bold;
+		color: #1F2937;
+	}
+
+	/* 收支汇总卡 */
+	.sum-card {
+		margin: 8rpx 24rpx 0 24rpx;
+		padding: 30rpx;
+		background-color: #2F6BFF;
+		border-radius: 24rpx;
+	}
+	.sum-row {
+		flex-direction: row;
+	}
+	.sum-item {
+		flex: 1;
+		flex-direction: column;
+		align-items: center;
+	}
+	.sum-label {
+		font-size: 22rpx;
+		color: rgba(255, 255, 255, 0.75);
+	}
+	.sum-value {
+		margin-top: 8rpx;
+		font-size: 30rpx;
+		font-weight: bold;
+		color: #FFFFFF;
+	}
+	.income-text {
+		color: #7BE8A8;
+	}
+	.budget-box {
+		margin-top: 26rpx;
+	}
+	.budget-head {
+		flex-direction: row;
+		justify-content: space-between;
+	}
+	.budget-text {
+		font-size: 22rpx;
+		color: rgba(255, 255, 255, 0.85);
+	}
+	.warn-text {
+		color: #FFD180;
+	}
+	.budget-track {
+		margin-top: 10rpx;
+		height: 12rpx;
+		background-color: rgba(255, 255, 255, 0.25);
+		border-radius: 6rpx;
+		overflow: hidden;
+	}
+	.budget-fill {
+		height: 12rpx;
+		background-color: #7BE8A8;
+		border-radius: 6rpx;
+	}
+	.budget-over {
+		background-color: #FFB74D;
+	}
+
+	/* 空状态 */
+	.empty {
+		margin-top: 160rpx;
+		align-items: center;
+	}
+	.empty-icon {
+		font-size: 90rpx;
+	}
+	.empty-text {
+		margin-top: 20rpx;
+		font-size: 30rpx;
+		color: #4B5563;
+	}
+	.empty-tip {
+		margin-top: 10rpx;
+		font-size: 24rpx;
+		color: #9CA3AF;
+	}
+
+	/* 日分组 */
+	.day-group {
+		margin: 20rpx 24rpx 0 24rpx;
+		background-color: #FFFFFF;
+		border-radius: 20rpx;
+		padding: 0 24rpx;
+	}
+	.day-head {
+		flex-direction: row;
+		justify-content: space-between;
+		align-items: center;
+		height: 76rpx;
+		border-bottom-width: 1px;
+		border-bottom-style: solid;
+		border-bottom-color: #F3F4F6;
+	}
+	.day-label {
+		font-size: 26rpx;
+		font-weight: bold;
+		color: #374151;
+	}
+	.day-sum {
+		flex-direction: row;
+	}
+	.day-out {
+		font-size: 22rpx;
+		color: #9CA3AF;
+		margin-right: 20rpx;
+	}
+	.day-in {
+		font-size: 22rpx;
+		color: #34C77B;
+	}
+
+	/* 账单项 */
+	.bill-item {
+		flex-direction: row;
+		align-items: center;
+		padding: 20rpx 0;
+	}
+	.bill-icon-box {
+		width: 76rpx;
+		height: 76rpx;
+		border-radius: 38rpx;
+		justify-content: center;
+		align-items: center;
+	}
+	.bill-icon {
+		font-size: 36rpx;
+	}
+	.bill-info {
+		flex: 1;
+		margin-left: 20rpx;
+		flex-direction: column;
+	}
+	.bill-cat {
+		font-size: 28rpx;
+		color: #1F2937;
+	}
+	.bill-note {
+		margin-top: 4rpx;
+		font-size: 22rpx;
+		color: #9CA3AF;
+	}
+	.bill-amount {
+		font-size: 30rpx;
+		font-weight: bold;
+		color: #1F2937;
+	}
+	.bill-del {
+		margin-left: 20rpx;
+		width: 56rpx;
+		height: 56rpx;
+		line-height: 56rpx;
+		text-align: center;
+		font-size: 24rpx;
+		color: #EF4444;
+		background-color: #FEF2F2;
+		border-radius: 12rpx;
+	}
+
+	.bottom-space {
+		height: 40rpx;
+	}
+</style>

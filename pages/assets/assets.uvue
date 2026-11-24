@@ -1,0 +1,279 @@
+<template>
+	<view class="page">
+		<scroll-view class="body" scroll-y>
+			<!-- 净资产卡 -->
+			<view class="total-card">
+				<text class="total-label">净资产合计</text>
+				<text class="total-value">¥{{ fmtMoney(totalSum) }}</text>
+				<text class="total-sub">{{ assets.length }} 个账户</text>
+			</view>
+
+			<!-- 空状态 -->
+			<view class="empty" v-if="assets.length == 0">
+				<text class="empty-icon">🏦</text>
+				<text class="empty-text">还没有添加资产账户</text>
+				<text class="empty-tip">点击下方按钮添加你的第一个账户</text>
+			</view>
+
+			<!-- 账户列表 -->
+			<view class="asset-list" v-if="assets.length > 0">
+				<view class="asset-item" v-for="(a, i) in assets" :key="a.id">
+					<view class="asset-item-left" @click="editAsset(i)">
+						<view class="asset-icon-box">
+							<text class="asset-icon">{{ a.icon }}</text>
+						</view>
+						<view class="asset-info">
+							<text class="asset-name">{{ a.name }}</text>
+							<text class="asset-amount">¥{{ fmtMoney(a.amount) }}</text>
+						</view>
+					</view>
+					<text class="asset-del" @click="removeAsset(i)">删</text>
+				</view>
+			</view>
+			<view class="body-space"></view>
+		</scroll-view>
+
+		<!-- 添加按钮 -->
+		<view class="footer">
+			<view class="add-btn" @click="addAsset">
+				<text class="add-btn-text">+ 添加账户</text>
+			</view>
+		</view>
+	</view>
+</template>
+
+<script>
+	import { loadAssets, saveAssets, assetTotal, genId, Asset } from '@/utils/data.uts'
+
+	const ICONS: Array<string> = ['🏦', '💳', '💰', '📱', '🪙', '📈']
+	const NAMES: Array<string> = ['现金', '银行卡', '支付宝', '微信钱包', '公积金', '投资账户']
+
+	export default {
+		data() {
+			return {
+				assets: [] as Array<Asset>,
+				totalSum: 0
+			}
+		},
+		onShow() {
+			this.refresh()
+		},
+		methods: {
+			refresh() {
+				this.assets = loadAssets()
+				this.totalSum = assetTotal(this.assets)
+			},
+			addAsset() {
+				this.showAssetModal('', '', 0)
+			},
+			editAsset(i: number) {
+				const a = this.assets[i]
+				this.showAssetModal(a.name, a.icon, a.amount, i)
+			},
+			showAssetModal(name: string, icon: string, amount: number, index: number) {
+				uni.showModal({
+					title: index >= 0 ? '编辑账户' : '添加账户',
+					editable: true,
+					placeholderContent: '格式：名称 金额（如：工资卡 8000）',
+					content: name.length > 0 ? `${name} ${amount}` : '',
+					success: (res) => {
+						if (!res.confirm) return
+						const input = (res.content as string).trim()
+						if (input.length == 0) return
+						// 解析 "名称 金额"（空格分隔，兼容多空格）
+						const parts = input.split(/\s+/)
+						if (parts.length < 2) {
+							uni.showToast({ title: '格式：名称 金额', icon: 'none' })
+							return
+						}
+						const newName = parts[0]
+						const newAmount = parseFloat(parts[1])
+						if (isNaN(newAmount)) {
+							uni.showToast({ title: '金额格式不正确', icon: 'none' })
+							return
+						}
+						// 图标按名称智能匹配
+						let newIcon = '💰'
+						for (let i = 0; i < NAMES.length; i++) {
+							if (newName.indexOf(NAMES[i].substring(0, 2)) >= 0) {
+								newIcon = ICONS[i]
+								break
+							}
+						}
+						if (icon.length > 0) newIcon = icon
+						const list = loadAssets()
+						if (index >= 0) {
+							const old = list[index]
+							list.splice(index, 1, {
+								id: old.id,
+								name: newName,
+								amount: newAmount,
+								icon: newIcon
+							} as Asset)
+						} else {
+							list.push({
+								id: genId(),
+								name: newName,
+								amount: newAmount,
+								icon: newIcon
+							} as Asset)
+						}
+						saveAssets(list)
+						this.refresh()
+						uni.showToast({ title: '已保存', icon: 'success' })
+					}
+				})
+			},
+			removeAsset(i: number) {
+				uni.showModal({
+					title: '删除账户',
+					content: `确定删除「${this.assets[i].name}」吗？`,
+					success: (res) => {
+						if (res.confirm) {
+							const list = loadAssets()
+							list.splice(i, 1)
+							saveAssets(list)
+							this.refresh()
+							uni.showToast({ title: '已删除', icon: 'success' })
+						}
+					}
+				})
+			},
+			fmtMoney(n: number): string {
+				return fmtMoney(n)
+			}
+		}
+	}
+</script>
+
+<style>
+	.page {
+		flex: 1;
+		background-color: #F7F8FC;
+	}
+	.body {
+		flex: 1;
+	}
+
+	/* 净资产卡 */
+	.total-card {
+		margin: 24rpx;
+		padding: 40rpx 34rpx;
+		background-color: #2F6BFF;
+		border-radius: 28rpx;
+		align-items: center;
+	}
+	.total-label {
+		font-size: 24rpx;
+		color: rgba(255, 255, 255, 0.75);
+	}
+	.total-value {
+		margin-top: 12rpx;
+		font-size: 64rpx;
+		font-weight: bold;
+		color: #FFFFFF;
+	}
+	.total-sub {
+		margin-top: 10rpx;
+		font-size: 22rpx;
+		color: rgba(255, 255, 255, 0.7);
+	}
+
+	/* 空状态 */
+	.empty {
+		margin-top: 140rpx;
+		align-items: center;
+	}
+	.empty-icon {
+		font-size: 90rpx;
+	}
+	.empty-text {
+		margin-top: 20rpx;
+		font-size: 30rpx;
+		color: #4B5563;
+	}
+	.empty-tip {
+		margin-top: 10rpx;
+		font-size: 24rpx;
+		color: #9CA3AF;
+	}
+
+	/* 账户列表 */
+	.asset-list {
+		margin: 8rpx 24rpx 0 24rpx;
+		background-color: #FFFFFF;
+		border-radius: 20rpx;
+		padding: 0 24rpx;
+	}
+	.asset-item {
+		flex-direction: row;
+		align-items: center;
+		padding: 24rpx 0;
+		border-bottom-width: 1px;
+		border-bottom-style: solid;
+		border-bottom-color: #F3F4F6;
+	}
+	.asset-item-left {
+		flex: 1;
+		flex-direction: row;
+		align-items: center;
+	}
+	.asset-icon-box {
+		width: 80rpx;
+		height: 80rpx;
+		border-radius: 40rpx;
+		background-color: #F3F5F9;
+		justify-content: center;
+		align-items: center;
+	}
+	.asset-icon {
+		font-size: 38rpx;
+	}
+	.asset-info {
+		flex: 1;
+		margin-left: 20rpx;
+		flex-direction: column;
+	}
+	.asset-name {
+		font-size: 28rpx;
+		color: #1F2937;
+	}
+	.asset-amount {
+		margin-top: 6rpx;
+		font-size: 30rpx;
+		font-weight: bold;
+		color: #1F2937;
+	}
+	.asset-del {
+		width: 56rpx;
+		height: 56rpx;
+		line-height: 56rpx;
+		text-align: center;
+		font-size: 24rpx;
+		color: #EF4444;
+		background-color: #FEF2F2;
+		border-radius: 12rpx;
+	}
+
+	.body-space {
+		height: 40rpx;
+	}
+
+	/* 底部添加按钮 */
+	.footer {
+		padding: 20rpx 24rpx 40rpx 24rpx;
+		background-color: #FFFFFF;
+	}
+	.add-btn {
+		height: 92rpx;
+		background-color: #2F6BFF;
+		border-radius: 46rpx;
+		justify-content: center;
+		align-items: center;
+	}
+	.add-btn-text {
+		font-size: 32rpx;
+		font-weight: bold;
+		color: #FFFFFF;
+	}
+</style>
