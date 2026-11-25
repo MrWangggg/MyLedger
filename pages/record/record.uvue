@@ -96,6 +96,8 @@
 			}
 		},
 		onLoad(options: OnLoadOptions) {
+			// 初始化分类宫格（新增记账）
+			this.fillCats()
 			// 支持编辑模式：?id=xxx
 			if (options['id'] != null) {
 				const id = options['id'] as string
@@ -112,7 +114,7 @@
 						name: src[i].name,
 						icon: src[i].icon,
 						color: src[i].color
-					})
+					} as CatItem)
 				}
 				this.cats = items
 				if (this.catIndex >= items.length) this.catIndex = 0

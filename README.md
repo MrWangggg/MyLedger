@@ -56,8 +56,8 @@ light-ledger/
 
 ## 图标再生成
 
-`static/tab/` 下的图标由 `../icon-gen/gen_icons.py` 生成（纯 Python 标准库，4x 超采样抗锯齿）：
+`static/tab/` 下的图标由 `tools/gen_icons.py` 生成（纯 Python 标准库，4x 超采样抗锯齿）：
 
 ```bash
-python icon-gen/gen_icons.py
+python tools/gen_icons.py
 ```
